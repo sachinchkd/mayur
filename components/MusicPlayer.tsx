@@ -43,7 +43,7 @@ declare global {
             onStateChange?: (event: { data: number; target: YTPlayer }) => void;
             onError?: (event: { data: number }) => void;
           };
-        }
+        },
       ) => YTPlayer;
       PlayerState: {
         ENDED: number;
@@ -74,6 +74,17 @@ function formatTime(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function randomizeTracks(items: Track[]) {
+  const shuffled = [...items];
+
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled;
+}
+
 function HeartIcon({ filled }: { filled: boolean }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
@@ -91,7 +102,16 @@ function HeartIcon({ filled }: { filled: boolean }) {
 
 function ShuffleIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-[22px] w-[22px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M16 3h5v5" />
       <path d="M4 20 21 3" />
       <path d="M21 16v5h-5" />
@@ -103,7 +123,12 @@ function ShuffleIcon() {
 
 function PrevIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" fill="currentColor">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-7 w-7"
+      fill="currentColor"
+    >
       <path d="M6.5 5h2.3v14H6.5z" />
       <path d="M19 5.3v13.4L9.4 12 19 5.3z" />
     </svg>
@@ -112,7 +137,12 @@ function PrevIcon() {
 
 function NextIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" fill="currentColor">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-7 w-7"
+      fill="currentColor"
+    >
       <path d="M15.2 5h2.3v14h-2.3z" />
       <path d="M5 5.3v13.4l9.6-6.7L5 5.3z" />
     </svg>
@@ -121,12 +151,22 @@ function NextIcon() {
 
 function PlayPauseIcon({ playing }: { playing: boolean }) {
   return playing ? (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" fill="currentColor">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-7 w-7"
+      fill="currentColor"
+    >
       <rect x="6.4" y="5" width="4" height="14" rx="1" />
       <rect x="13.6" y="5" width="4" height="14" rx="1" />
     </svg>
   ) : (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7 translate-x-[1px]" fill="currentColor">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-7 w-7 translate-x-[1px]"
+      fill="currentColor"
+    >
       <path d="M8 5.2v13.6L19 12 8 5.2z" />
     </svg>
   );
@@ -134,7 +174,16 @@ function PlayPauseIcon({ playing }: { playing: boolean }) {
 
 function RepeatIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[23px] w-[23px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-[23px] w-[23px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="m17 2 4 4-4 4" />
       <path d="M3 11V9a3 3 0 0 1 3-3h15" />
       <path d="m7 22-4-4 4-4" />
@@ -153,7 +202,7 @@ export default function MusicPlayer() {
   const [elapsed, setElapsed] = useState(0);
   const [duration, setDuration] = useState(0);
   const [liked, setLiked] = useState(false);
-  const [shuffle, setShuffle] = useState(false);
+  const [shuffle, setShuffle] = useState(true);
   const [repeatOne, setRepeatOne] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -161,9 +210,10 @@ export default function MusicPlayer() {
   const playerRef = useRef<YTPlayer | null>(null);
   const tracksRef = useRef<Track[]>([]);
   const indexRef = useRef(0);
-  const shuffleRef = useRef(false);
+  const shuffleRef = useRef(true);
   const repeatOneRef = useRef(false);
-
+  const shufflePoolRef = useRef<number[]>([]);
+  const historyRef = useRef<number[]>([]);
   const currentTrack = tracks[currentIndex];
   const controlsDisabled = !tracks.length || !playerReady;
 
@@ -183,77 +233,139 @@ export default function MusicPlayer() {
     repeatOneRef.current = repeatOne;
   }, [repeatOne]);
 
-  const playIndex = useCallback((index: number, autoplay = true) => {
+  const playIndex = useCallback(
+    (index: number, autoplay = true, rememberCurrent = true) => {
+      const allTracks = tracksRef.current;
+      const player = playerRef.current;
+
+      if (!allTracks.length || !player) return;
+
+      const normalized =
+        ((index % allTracks.length) + allTracks.length) % allTracks.length;
+
+      if (rememberCurrent && normalized !== indexRef.current) {
+        historyRef.current.push(indexRef.current);
+
+        if (historyRef.current.length > allTracks.length * 2) {
+          historyRef.current.shift();
+        }
+      }
+
+      indexRef.current = normalized;
+      setCurrentIndex(normalized);
+
+      setElapsed(0);
+      setDuration(0);
+      setLiked(false);
+
+      if (autoplay) {
+        player.loadVideoById(allTracks[normalized].videoId);
+        setPlaying(true);
+      } else {
+        player.cueVideoById(allTracks[normalized].videoId);
+        setPlaying(false);
+      }
+    },
+    [],
+  );
+
+  const getRandomNextIndex = useCallback(() => {
     const allTracks = tracksRef.current;
-    const player = playerRef.current;
-    if (!allTracks.length || !player) return;
+    const current = indexRef.current;
 
-    const normalized = ((index % allTracks.length) + allTracks.length) % allTracks.length;
-    indexRef.current = normalized;
-    setCurrentIndex(normalized);
-    setElapsed(0);
-    setDuration(0);
-    setLiked(false);
-
-    if (autoplay) {
-      player.loadVideoById(allTracks[normalized].videoId);
-      setPlaying(true);
-    } else {
-      player.cueVideoById(allTracks[normalized].videoId);
-      setPlaying(false);
+    if (allTracks.length <= 1) {
+      return current;
     }
+
+    let pool = shufflePoolRef.current.filter(
+      (index) => index >= 0 && index < allTracks.length && index !== current,
+    );
+
+    if (!pool.length) {
+      pool = allTracks
+        .map((_, index) => index)
+        .filter((index) => index !== current);
+    }
+
+    const randomPosition = Math.floor(Math.random() * pool.length);
+
+    const nextIndex = pool[randomPosition];
+
+    shufflePoolRef.current = pool.filter(
+      (_, index) => index !== randomPosition,
+    );
+
+    return nextIndex;
   }, []);
 
-  const playNext = useCallback(() => {
-    const allTracks = tracksRef.current;
-    if (!allTracks.length) return;
+  const playNext = useCallback(
+    (ignoreRepeat = false) => {
+      const allTracks = tracksRef.current;
 
-    if (repeatOneRef.current) {
-      playIndex(indexRef.current, true);
-      return;
-    }
+      if (!allTracks.length) return;
 
-    if (shuffleRef.current && allTracks.length > 1) {
-      let nextIndex = indexRef.current;
-      while (nextIndex === indexRef.current) {
-        nextIndex = Math.floor(Math.random() * allTracks.length);
+      if (!ignoreRepeat && repeatOneRef.current) {
+        playIndex(indexRef.current, true, false);
+        return;
       }
-      playIndex(nextIndex, true);
-      return;
+
+      if (shuffleRef.current) {
+        playIndex(getRandomNextIndex(), true);
+        return;
+      }
+
+      playIndex(indexRef.current + 1, true);
+    },
+    [getRandomNextIndex, playIndex],
+  );
+
+  const playPrevious = useCallback(() => {
+    if (!tracksRef.current.length) return;
+
+    if (shuffleRef.current && historyRef.current.length) {
+      const previousIndex = historyRef.current.pop();
+
+      if (previousIndex !== undefined) {
+        playIndex(previousIndex, true, false);
+        return;
+      }
     }
 
-    playIndex(indexRef.current + 1, true);
+    playIndex(indexRef.current - 1, true, false);
   }, [playIndex]);
 
-  const createPlayer = useCallback((firstVideoId: string) => {
-    if (!window.YT || playerRef.current) return;
+  const createPlayer = useCallback(
+    (firstVideoId: string) => {
+      if (!window.YT || playerRef.current) return;
 
-    playerRef.current = new window.YT.Player("youtube-player", {
-      width: "1",
-      height: "1",
-      videoId: firstVideoId,
-      playerVars: {
-        autoplay: 0,
-        controls: 0,
-        playsinline: 1,
-        rel: 0,
-        modestbranding: 1,
-      },
-      events: {
-        onReady: (event) => {
-          event.target.setVolume(82);
-          setPlayerReady(true);
+      playerRef.current = new window.YT.Player("youtube-player", {
+        width: "1",
+        height: "1",
+        videoId: firstVideoId,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1,
         },
-        onStateChange: (event) => {
-          if (!window.YT) return;
-          if (event.data === window.YT.PlayerState.PLAYING) setPlaying(true);
-          if (event.data === window.YT.PlayerState.PAUSED) setPlaying(false);
-          if (event.data === window.YT.PlayerState.ENDED) playNext();
+        events: {
+          onReady: (event) => {
+            event.target.setVolume(82);
+            setPlayerReady(true);
+          },
+          onStateChange: (event) => {
+            if (!window.YT) return;
+            if (event.data === window.YT.PlayerState.PLAYING) setPlaying(true);
+            if (event.data === window.YT.PlayerState.PAUSED) setPlaying(false);
+            if (event.data === window.YT.PlayerState.ENDED) playNext();
+          },
+          onError: () => playNext(true),
         },
-        onError: () => playNext(),
-      },
-    });
-  }, [playNext]);
+      });
+    },
+    [playNext],
+  );
 
   useEffect(() => {
     if (!tracks.length || playerRef.current) return;
@@ -264,7 +376,9 @@ export default function MusicPlayer() {
       return;
     }
 
-    const existing = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src="https://www.youtube.com/iframe_api"]',
+    );
     if (!existing) {
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
@@ -310,32 +424,54 @@ export default function MusicPlayer() {
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
-          const parsed = JSON.parse(cached) as { cachedAt: number; data: PlaylistResponse };
-          if (Date.now() - parsed.cachedAt < 30 * 60 * 1000 && parsed.data.tracks?.length) {
+          const parsed = JSON.parse(cached) as {
+            cachedAt: number;
+            data: PlaylistResponse;
+          };
+          if (
+            Date.now() - parsed.cachedAt < 30 * 60 * 1000 &&
+            parsed.data.tracks?.length
+          ) {
             playerRef.current?.destroy();
             playerRef.current = null;
             setPlayerReady(false);
             setPlaying(false);
             setElapsed(0);
             setDuration(0);
+            const randomizedTracks = randomizeTracks(parsed.data.tracks);
+
             setCurrentIndex(0);
             indexRef.current = 0;
-            tracksRef.current = parsed.data.tracks;
-            setTracks(parsed.data.tracks);
+
+            historyRef.current = [];
+
+            shufflePoolRef.current = randomizedTracks
+              .slice(1)
+              .map((_, index) => index + 1);
+
+            tracksRef.current = randomizedTracks;
+            setTracks(randomizedTracks);
             setLoading(false);
             return;
           }
         }
       } catch {}
 
-      const response = await fetch(`/api/playlist?id=${encodeURIComponent(id)}`);
+      const response = await fetch(
+        `/api/playlist?id=${encodeURIComponent(id)}`,
+      );
       const data = (await response.json()) as PlaylistResponse;
 
-      if (!response.ok) throw new Error(data.error || "Could not load playlist.");
-      if (!data.tracks.length) throw new Error("This playlist has no playable videos.");
+      if (!response.ok)
+        throw new Error(data.error || "Could not load playlist.");
+      if (!data.tracks.length)
+        throw new Error("This playlist has no playable videos.");
 
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ cachedAt: Date.now(), data }));
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify({ cachedAt: Date.now(), data }),
+        );
         localStorage.setItem("mayur:last-playlist", id);
       } catch {}
 
@@ -360,8 +496,12 @@ export default function MusicPlayer() {
     let playlist = "";
 
     try {
-      const queryPlaylist = new URLSearchParams(window.location.search).get("playlist") ?? "";
-      const savedPlaylist = localStorage.getItem("mayur:last-playlist") ?? localStorage.getItem("pulse:last-playlist") ?? "";
+      const queryPlaylist =
+        new URLSearchParams(window.location.search).get("playlist") ?? "";
+      const savedPlaylist =
+        localStorage.getItem("mayur:last-playlist") ??
+        localStorage.getItem("pulse:last-playlist") ??
+        "";
       playlist = queryPlaylist || defaultPlaylist || savedPlaylist;
     } catch {
       playlist = defaultPlaylist;
@@ -379,9 +519,12 @@ export default function MusicPlayer() {
 
   const progress = duration > 0 ? Math.min((elapsed / duration) * 100, 100) : 0;
 
-  const title = currentTrack?.title ?? (loading ? "Loading playlist…" : "Mayur Yatayat");
-  const artist = currentTrack?.channel ?? (error ? "Playlist unavailable" : "Your journey, your music");
-  const artwork = currentTrack?.thumbnail || "/cover.svg";
+  const title =
+    currentTrack?.title ?? (loading ? "Loading playlist…" : "Mayur Yatayat");
+  const artist =
+    currentTrack?.channel ??
+    (error ? "Playlist unavailable" : "Your journey, your music");
+  const artwork = currentTrack?.thumbnail || "/hero.png";
 
   return (
     <main
@@ -391,12 +534,38 @@ export default function MusicPlayer() {
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/40" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[45%] bg-gradient-to-t from-slate-950/35 to-transparent" />
 
+ 
+  <div className="absolute top-[15vh] font-['Matangi'] left-1/2 z-10 w-full -translate-x-1/2 px-6 text-center text-yellow-400">
+    <h1 className="text-7xl font-semibold tracking-tight max-sm:text-3xl">
+      मयुर यातायात 
+    </h1>
+
+    <p className="mt-6
+    font-['Matangi']
+    font-bold
+    text-sm
+    text-white
+    [text-shadow:0_2px_4px_rgba(0,0,0,0.9),0_4px_12px_rgba(0,0,0,0.75)]">
+      
+
+    </p>
+  </div>
+
       <section
         aria-label="Music player"
-        className="fixed bottom-[clamp(18px,4vh,42px)] left-1/2 z-20 w-[min(520px,calc(100vw-28px))] -translate-x-1/2 rounded-[32px] border border-white/[0.16] bg-black/[0.12]
-    backdrop-blur-[38px]
-    backdrop-saturate-[190%]
-    backdrop-brightness-75 px-7 pb-5 pt-6 text-white shadow-[0_28px_80px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-[28px] backdrop-saturate-[145%] max-sm:rounded-[26px] max-sm:px-5 max-sm:pb-4 max-sm:pt-5"
+        className="fixed bottom-[clamp(18px,4vh,42px)] left-1/2 z-20 w-[min(520px,calc(100vw-28px))] -translate-x-1/2 rounded-[32px] border border-white/[0.08]
+  bg-white/[0.015]
+
+  backdrop-blur-[18px]
+  backdrop-saturate-[140%]
+
+  px-7 pb-5 pt-6
+  text-white
+
+  shadow-[0_28px_80px_rgba(0,0,0,0.30),inset_0_1px_0_rgba(255,255,255,0.12)]
+
+  max-sm:rounded-[26px]
+  max-sm:px-5 max-sm:pb-4 max-sm:pt-5"
       >
         <div className="flex items-center gap-5 max-sm:gap-4">
           <img
@@ -406,8 +575,12 @@ export default function MusicPlayer() {
           />
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[19px] font-semibold tracking-[-0.02em] max-sm:text-[17px]">{title}</h1>
-            <p className="mt-1 truncate text-[16px] text-white/55 max-sm:text-sm">{artist}</p>
+            <h1 className="truncate text-[19px] font-semibold tracking-[-0.02em] max-sm:text-[17px]">
+              {title}
+            </h1>
+            <p className="mt-1 truncate text-[16px] text-white/55 max-sm:text-sm">
+              {artist}
+            </p>
           </div>
 
           <button
@@ -424,7 +597,10 @@ export default function MusicPlayer() {
         <div className="mt-5">
           <div className="relative flex h-4 items-center">
             <div className="absolute inset-x-0 h-1 rounded-full bg-white/[0.16]" />
-            <div className="absolute left-0 h-1 rounded-full bg-white" style={{ width: `${progress}%` }} />
+            <div
+              className="absolute left-0 h-1 rounded-full bg-white"
+              style={{ width: `${progress}%` }}
+            />
             <input
               className="music-range relative z-10"
               type="range"
@@ -458,12 +634,14 @@ export default function MusicPlayer() {
             aria-pressed={shuffle}
           >
             <ShuffleIcon />
-            {shuffle && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-white" />}
+            {shuffle && (
+              <span className="absolute bottom-1 h-1 w-1 rounded-full bg-white" />
+            )}
           </button>
 
           <button
             type="button"
-            onClick={() => playIndex(currentIndex - 1, true)}
+            onClick={playPrevious}
             className="grid h-12 w-12 place-items-center rounded-full text-white transition hover:scale-110 hover:bg-white/10 disabled:cursor-default disabled:opacity-35"
             disabled={controlsDisabled}
             aria-label="Previous track"
@@ -483,7 +661,7 @@ export default function MusicPlayer() {
 
           <button
             type="button"
-            onClick={playNext}
+            onClick={() => playNext()}
             className="grid h-12 w-12 place-items-center rounded-full text-white transition hover:scale-110 hover:bg-white/10 disabled:cursor-default disabled:opacity-35"
             disabled={controlsDisabled}
             aria-label="Next track"
@@ -500,12 +678,17 @@ export default function MusicPlayer() {
             aria-pressed={repeatOne}
           >
             <RepeatIcon />
-            {repeatOne && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-white" />}
+            {repeatOne && (
+              <span className="absolute bottom-1 h-1 w-1 rounded-full bg-white" />
+            )}
           </button>
         </div>
       </section>
 
-      <div className="pointer-events-none absolute bottom-0 right-0 h-px w-px overflow-hidden opacity-0" aria-hidden="true">
+      <div
+        className="pointer-events-none absolute bottom-0 right-0 h-px w-px overflow-hidden opacity-0"
+        aria-hidden="true"
+      >
         <div id="youtube-player" />
       </div>
     </main>
