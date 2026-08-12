@@ -393,7 +393,10 @@ export default function MusicPlayer() {
 
       <section
         aria-label="Music player"
-        className="fixed bottom-[clamp(18px,4vh,42px)] left-1/2 z-20 w-[min(520px,calc(100vw-28px))] -translate-x-1/2 rounded-[32px] border border-white/[0.16] bg-[linear-gradient(135deg,rgba(21,13,32,0.56),rgba(4,30,50,0.42))] px-7 pb-5 pt-6 text-white shadow-[0_28px_80px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-[28px] backdrop-saturate-[145%] max-sm:rounded-[26px] max-sm:px-5 max-sm:pb-4 max-sm:pt-5"
+        className="fixed bottom-[clamp(18px,4vh,42px)] left-1/2 z-20 w-[min(520px,calc(100vw-28px))] -translate-x-1/2 rounded-[32px] border border-white/[0.16] bg-black/[0.12]
+    backdrop-blur-[38px]
+    backdrop-saturate-[190%]
+    backdrop-brightness-75 px-7 pb-5 pt-6 text-white shadow-[0_28px_80px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-[28px] backdrop-saturate-[145%] max-sm:rounded-[26px] max-sm:px-5 max-sm:pb-4 max-sm:pt-5"
       >
         <div className="flex items-center gap-5 max-sm:gap-4">
           <img
